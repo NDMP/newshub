@@ -87,21 +87,27 @@ app.post('/api/ingest', async (req, res) => {
 // Auth Endpoints (Simple)
 app.post('/api/signup', (req, res) => {
     const { email, password } = req.body;
+    console.log(`[Auth] Signup attempt for: ${email}`);
     try {
         const stmt = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)');
-        const result = stmt.run(email, password); // In production, hash the password!
+        const result = stmt.run(email, password);
+        console.log(`[Auth] Signup successful: ${email}`);
         res.json({ id: result.lastInsertRowid, email });
     } catch (err) {
+        console.error(`[Auth] Signup failed for ${email}:`, err.message);
         res.status(400).json({ error: 'User already exists' });
     }
 });
 
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
+    console.log(`[Auth] Login attempt for: ${email}`);
     const user = db.prepare('SELECT * FROM users WHERE email = ? AND password_hash = ?').get(email, password);
     if (user) {
+        console.log(`[Auth] Login successful: ${email}`);
         res.json({ id: user.id, email: user.email });
     } else {
+        console.warn(`[Auth] Login failed (401) for: ${email}`);
         res.status(401).json({ error: 'Invalid credentials' });
     }
 });

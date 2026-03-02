@@ -6,6 +6,9 @@ const groq = new Groq({
 });
 
 async function processArticle(article) {
+  if (!process.env.GROQ_API_KEY) {
+    console.error('[Diagnostic] GROQ_API_KEY is missing!');
+  }
   console.log(`Processing article: ${article.title.substring(0, 50)}...`);
   const prompt = `
     Analyze this news article for deep bias and sentiment. 
