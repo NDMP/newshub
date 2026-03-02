@@ -7,8 +7,14 @@ async function processArticle(article) {
     console.error('[Diagnostic] GROQ_API_KEY is missing!');
     return null;
   }
-  // Strictly remove all whitespace, newlines, and non-printable characters
-  GROQ_API_KEY = GROQ_API_KEY.replace(/[\s\n\r]/g, '');
+
+  // Aggressive Sanitization: Keep only standard printable ASCII (alphanumeric and some symbols)
+  // This explicitly removes spaces, newlines, and hidden Unicode garbage.
+  const sanitizedKey = GROQ_API_KEY.replace(/[^\x21-\x7E]/g, '');
+
+  if (sanitizedKey.length !== GROQ_API_KEY.length) {
+    console.log(`[Sanitization] Cleaned ${GROQ_API_KEY.length - sanitizedKey.length} hidden characters from key.`);
+  }
 
   console.log(`Processing article: ${article.title.substring(0, 50)}...`);
 
@@ -59,10 +65,10 @@ async function processArticle(article) {
           response_format: { type: 'json_object' }
         }, {
           headers: {
-            'Authorization': `Bearer ${GROQ_API_KEY}`,
+            'Authorization': 'Bearer ' + sanitizedKey, // Explicit concatenation for robustness
             'Content-Type': 'application/json'
           },
-          timeout: 45000 // 45 seconds timeout
+          timeout: 45000
         });
         break;
       } catch (error) {
@@ -73,7 +79,6 @@ async function processArticle(article) {
         } else {
           console.error('[Groq Direct Error]', {
             status: error.response?.status,
-            statusText: error.response?.statusText,
             message: error.message,
             data: error.response?.data
           });
@@ -82,10 +87,7 @@ async function processArticle(article) {
       }
     }
 
-    if (!response || !response.data || !response.data.choices) {
-      console.error('[Groq Direct] Invalid response format:', response?.data);
-      return null;
-    }
+    if (!response || !response.data || !response.data.choices) return null;
 
     const result = JSON.parse(response.data.choices[0].message.content);
     console.log(`Successfully processed: ${article.title.substring(0, 30)}`);

@@ -1,61 +1,43 @@
-const axios = require('axios');
-require('dotenv').config();
+const Parser = require('rss-parser');
+const parser = new Parser();
 
-const CATEGORIES = ['general', 'business', 'entertainment', 'health', 'science', 'sports', 'technology'];
+const RSS_FEEDS = [
+    { url: 'http://feeds.bbci.co.uk/news/rss.xml', category: 'General' },
+    { url: 'http://rss.cnn.com/rss/cnn_topstories.rss', category: 'General' },
+    { url: 'http://feeds.reuters.com/reuters/topNews', category: 'General' },
+    { url: 'https://www.aljazeera.com/xml/rss/all.xml', category: 'General' },
+    { url: 'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml', category: 'General' }
+];
 
 async function fetchNews() {
-    let key = process.env.MEDIASTACK_API_KEY;
-    if (key) key = key.trim(); // Handle accidental spaces in Railway UI
+    console.log('Fetching news via RSS...');
+    let allArticles = [];
 
-    console.log(`[Diagnostic] MEDIASTACK_API_KEY present: ${!!key}`);
-    if (key) {
-        console.log(`[Diagnostic] Key starts with: ${key.substring(0, 4)}...`);
-    }
-
-    const allArticles = [];
-
-    for (const category of CATEGORIES) {
+    for (const feed of RSS_FEEDS) {
         try {
-            console.log(`Fetching category: ${category}...`);
-            await new Promise(r => setTimeout(r, 1000));
+            console.log(`Fetching feed: ${feed.url}`);
+            const feedData = await parser.parseURL(feed.url);
 
-            const response = await axios.get('http://api.mediastack.com/v1/news', {
-                params: {
-                    access_key: key,
-                    categories: category,
-                    languages: 'en',
-                    limit: 20
-                }
-            });
+            const articles = feedData.items.map(item => ({
+                title: item.title,
+                source: feedData.title || 'RSS News',
+                date: item.pubDate || new Date().toISOString(),
+                content: item.contentSnippet || item.content || '',
+                full_text: item.content || item.description || '',
+                url: item.link,
+                image_url: item.enclosure?.url || (item.content?.match(/src="([^"]+)"/)?.[1]) || null,
+                category_hint: feed.category,
+                raw_json: JSON.stringify(item)
+            }));
 
-            if (response.data && response.data.data) {
-                const categoryArticles = response.data.data.map(article => ({
-                    title: article.title,
-                    source: article.source,
-                    date: article.published_at,
-                    content: article.description,
-                    full_text: article.description,
-                    url: article.url,
-                    image_url: article.image,
-                    category_hint: category.charAt(0).toUpperCase() + category.slice(1),
-                    raw_json: JSON.stringify(article)
-                }));
-                allArticles.push(...categoryArticles);
-                console.log(`Fetched ${categoryArticles.length} articles for ${category}`);
-            } else if (response.data && response.data.error) {
-                console.error(`[Mediastack Error] Code: ${response.data.error.code}, Message: ${response.data.error.message}`);
-            }
+            allArticles = [...allArticles, ...articles];
         } catch (error) {
-            if (error.response && error.response.data) {
-                console.error(`[Mediastack HTTP Error] Status: ${error.response.status}, Data:`, JSON.stringify(error.response.data));
-            } else {
-                console.error(`Error fetching category ${category} from Mediastack:`, error.message);
-            }
+            console.error(`Error fetching RSS feed ${feed.url}:`, error.message);
         }
     }
 
-    const uniqueArticles = Array.from(new Map(allArticles.map(a => [a.url, a])).values());
-    return uniqueArticles;
+    // Shuffle and limit
+    return allArticles.sort(() => Math.random() - 0.5).slice(0, 50);
 }
 
 module.exports = { fetchNews };
