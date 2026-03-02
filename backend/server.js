@@ -44,15 +44,17 @@ app.post('/api/ask', async (req, res) => {
 // Ingest articles
 app.post('/api/ingest', async (req, res) => {
     console.log('Manual ingestion triggered...');
-    res.json({ message: 'Ingestion started in the background. Your news feed will update shortly.' });
 
-    // Run the rest in background
-    (async () => {
-        try {
-            const rawArticles = await fetchNews();
-            console.log(`Found ${rawArticles.length} articles from Mediastack.`);
+    try {
+        const rawArticles = await fetchNews();
+        console.log(`Found ${rawArticles.length} articles from Mediastack.`);
+
+        // Respond immediately with success message
+        res.json({ message: `Sync started for ${rawArticles.length} articles. Feed will update in background.` });
+
+        // Run processing in background
+        (async () => {
             let count = 0;
-
             for (const article of rawArticles.slice(0, 30)) {
                 try {
                     const existing = db.prepare('SELECT id FROM articles WHERE url = ?').get(article.url);
@@ -61,10 +63,10 @@ app.post('/api/ingest', async (req, res) => {
                         continue;
                     }
 
-                    console.log(`[Sync] Analyzing with AI: ${article.title.substring(0, 30)}`);
+                    console.log(`[Sync] Processing with AI: ${article.title.substring(0, 30)}`);
                     const results = await processArticle(article);
                     if (!results) {
-                        console.warn(`[Sync] AI Processing failed for: ${article.title.substring(0, 30)}`);
+                        console.warn(`[Sync] AI Processing skipped for: ${article.title.substring(0, 30)}`);
                         continue;
                     }
 
@@ -80,16 +82,18 @@ app.post('/api/ingest', async (req, res) => {
                         results.bias_label, results.bias_score, JSON.stringify(results.bias_breakdown), results.reliability_score || 0.5, results.category
                     );
                     count++;
-                    if (count % 5 === 0) console.log(`[Sync] Progress: Ingested ${count} articles.`);
+                    if (count % 5 === 0) console.log(`[Sync] Progress: ${count} articles finished.`);
                 } catch (innerError) {
-                    console.error(`[Sync Loop Error] for article: ${article.title.substring(0, 30)}`, innerError.message);
+                    console.error(`[Sync Loop Error]`, innerError.message);
                 }
             }
-            console.log(`Manual ingestion completed. Added ${count} articles.`);
-        } catch (error) {
-            console.error('Background ingestion error:', error.message);
-        }
-    })();
+            console.log(`Background sync finished. Added ${count} articles.`);
+        })();
+
+    } catch (error) {
+        console.error('Ingestion error:', error.message);
+        res.status(500).json({ error: 'Failed to start ingestion' });
+    }
 });
 
 // Auth Endpoints (Simple)
