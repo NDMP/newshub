@@ -1,12 +1,14 @@
 const axios = require('axios');
 require('dotenv').config();
 
-const MEDIASTACK_API_KEY = process.env.MEDIASTACK_API_KEY;
-
 const CATEGORIES = ['general', 'business', 'entertainment', 'health', 'science', 'sports', 'technology'];
 
 async function fetchNews() {
+    const MEDIASTACK_API_KEY = process.env.MEDIASTACK_API_KEY;
     console.log(`[Diagnostic] MEDIASTACK_API_KEY present: ${!!MEDIASTACK_API_KEY}`);
+    if (MEDIASTACK_API_KEY) {
+        console.log(`[Diagnostic] Key starts with: ${MEDIASTACK_API_KEY.substring(0, 4)}...`);
+    }
     const allArticles = [];
 
     for (const category of CATEGORIES) {
