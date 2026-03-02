@@ -56,10 +56,17 @@ app.post('/api/ingest', async (req, res) => {
             for (const article of rawArticles.slice(0, 30)) {
                 try {
                     const existing = db.prepare('SELECT id FROM articles WHERE url = ?').get(article.url);
-                    if (existing) continue;
+                    if (existing) {
+                        console.log(`[Sync] Skipping existing: ${article.title.substring(0, 30)}`);
+                        continue;
+                    }
 
+                    console.log(`[Sync] Analyzing with AI: ${article.title.substring(0, 30)}`);
                     const results = await processArticle(article);
-                    if (!results) continue;
+                    if (!results) {
+                        console.warn(`[Sync] AI Processing failed for: ${article.title.substring(0, 30)}`);
+                        continue;
+                    }
 
                     db.prepare(`
                         INSERT INTO articles (
@@ -73,8 +80,9 @@ app.post('/api/ingest', async (req, res) => {
                         results.bias_label, results.bias_score, JSON.stringify(results.bias_breakdown), results.reliability_score || 0.5, results.category
                     );
                     count++;
+                    if (count % 5 === 0) console.log(`[Sync] Progress: Ingested ${count} articles.`);
                 } catch (innerError) {
-                    console.error(`Error in loop for article: ${article.title.substring(0, 30)}`, innerError.message);
+                    console.error(`[Sync Loop Error] for article: ${article.title.substring(0, 30)}`, innerError.message);
                 }
             }
             console.log(`Manual ingestion completed. Added ${count} articles.`);
