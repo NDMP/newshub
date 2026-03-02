@@ -3,6 +3,8 @@ require('dotenv').config();
 
 const MEDIASTACK_API_KEY = process.env.MEDIASTACK_API_KEY;
 
+const CATEGORIES = ['general', 'business', 'entertainment', 'health', 'science', 'sports', 'technology'];
+
 async function fetchNews() {
     console.log(`[Diagnostic] MEDIASTACK_API_KEY present: ${!!MEDIASTACK_API_KEY}`);
     const allArticles = [];
