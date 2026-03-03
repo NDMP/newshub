@@ -1,4 +1,4 @@
-const axios = require('axios');
+const Groq = require('groq-sdk');
 require('dotenv').config();
 
 async function processArticle(article) {
@@ -8,13 +8,14 @@ async function processArticle(article) {
     return null;
   }
 
-  // Aggressive Sanitization: Keep only standard printable ASCII (alphanumeric and some symbols)
-  // This explicitly removes spaces, newlines, and hidden Unicode garbage.
+  // Aggressive Sanitization: Keep only standard printable ASCII
   const sanitizedKey = GROQ_API_KEY.replace(/[^\x21-\x7E]/g, '');
 
   if (sanitizedKey.length !== GROQ_API_KEY.length) {
     console.log(`[Sanitization] Cleaned ${GROQ_API_KEY.length - sanitizedKey.length} hidden characters from key.`);
   }
+
+  const groq = new Groq({ apiKey: sanitizedKey });
 
   console.log(`Processing article: ${article.title.substring(0, 50)}...`);
 
@@ -55,46 +56,52 @@ async function processArticle(article) {
 
     while (retries < maxRetries) {
       try {
-        console.log(`[Groq Direct] Call attempt ${retries + 1} for: ${article.title.substring(0, 30)}`);
-        response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+        console.log(`[Groq SDK] Call attempt ${retries + 1} for: ${article.title.substring(0, 30)}`);
+
+        response = await groq.chat.completions.create({
           messages: [
             { role: 'system', content: 'You are a neutral news analyst.' },
             { role: 'user', content: prompt }
           ],
-          model: 'llama3-8b-8192',
+          model: 'llama-3.1-8b-instant',
           response_format: { type: 'json_object' }
-        }, {
-          headers: {
-            'Authorization': 'Bearer ' + sanitizedKey, // Explicit concatenation for robustness
-            'Content-Type': 'application/json'
-          },
-          timeout: 45000
         });
-        break;
+
+        break; // Success
       } catch (error) {
-        if (error.response && error.response.status === 429) {
-          console.log(`[Groq Direct] Rate limit hit. Retrying in 5s...`);
+        if (error.status === 429 || (error.message && error.message.includes('429'))) {
+          console.log(`[Groq SDK] Rate limit hit. Retrying in 5s...`);
           await new Promise(r => setTimeout(r, 5000));
           retries++;
         } else {
-          console.error('[Groq Direct Error]', {
-            status: error.response?.status,
-            message: error.message,
-            data: error.response?.data
-          });
+          console.error('[Groq SDK Error]', error.message);
           throw error;
         }
       }
     }
 
-    if (!response || !response.data || !response.data.choices) return null;
+    if (!response || !response.choices || !response.choices[0]) return null;
 
-    const result = JSON.parse(response.data.choices[0].message.content);
+    const result = JSON.parse(response.choices[0].message.content);
     console.log(`Successfully processed: ${article.title.substring(0, 30)}`);
     return result;
   } catch (error) {
     console.error(`Error processing article "${article.title.substring(0, 30)}":`, error.message);
-    return null;
+    // Fallback object to ensure article is still saved
+    return {
+      summary: article.content ? `[Offline/Fallback Summary]: ${article.content.replace(/<[^>]+>/g, '')}` : "[Offline/Fallback]: Summary unavailable. AI analysis skipped due to Groq datacenter security policy (403 Access Denied) blocking the API connection.",
+      sentiment_label: "Neutral",
+      sentiment_score: 0,
+      bias_label: "Neutral",
+      bias_score: 0.5,
+      bias_breakdown: {
+        loaded_language: [],
+        framing: "Framing analysis unavailable.",
+        omissions: "Omission analysis unavailable."
+      },
+      reliability_score: 0.5,
+      category: article.category_hint || "General"
+    };
   }
 }
 

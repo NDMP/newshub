@@ -1,43 +1,52 @@
-const Parser = require('rss-parser');
-const parser = new Parser();
-
-const RSS_FEEDS = [
-    { url: 'http://feeds.bbci.co.uk/news/rss.xml', category: 'General' },
-    { url: 'http://rss.cnn.com/rss/cnn_topstories.rss', category: 'General' },
-    { url: 'http://feeds.reuters.com/reuters/topNews', category: 'General' },
-    { url: 'https://www.aljazeera.com/xml/rss/all.xml', category: 'General' },
-    { url: 'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml', category: 'General' }
-];
+const axios = require('axios');
 
 async function fetchNews() {
-    console.log('Fetching news via RSS...');
-    let allArticles = [];
-
-    for (const feed of RSS_FEEDS) {
-        try {
-            console.log(`Fetching feed: ${feed.url}`);
-            const feedData = await parser.parseURL(feed.url);
-
-            const articles = feedData.items.map(item => ({
-                title: item.title,
-                source: feedData.title || 'RSS News',
-                date: item.pubDate || new Date().toISOString(),
-                content: item.contentSnippet || item.content || '',
-                full_text: item.content || item.description || '',
-                url: item.link,
-                image_url: item.enclosure?.url || (item.content?.match(/src="([^"]+)"/)?.[1]) || null,
-                category_hint: feed.category,
-                raw_json: JSON.stringify(item)
-            }));
-
-            allArticles = [...allArticles, ...articles];
-        } catch (error) {
-            console.error(`Error fetching RSS feed ${feed.url}:`, error.message);
-        }
+    console.log('Fetching news via NewsAPI...');
+    const NEWSAPI_KEY = process.env.NEWSAPI_KEY;
+    if (!NEWSAPI_KEY) {
+        console.error('Missing NEWSAPI_KEY in .env');
+        return [];
     }
 
-    // Shuffle and limit
-    return allArticles.sort(() => Math.random() - 0.5).slice(0, 50);
+    try {
+        const categories = ['general', 'business', 'technology', 'sports', 'entertainment', 'health'];
+        let allArticles = [];
+
+        for (const cat of categories) {
+            console.log(`Fetching ${cat} news...`);
+            const response = await axios.get('https://newsapi.org/v2/top-headlines', {
+                params: {
+                    apiKey: NEWSAPI_KEY,
+                    language: 'en',
+                    category: cat,
+                    pageSize: 20
+                }
+            });
+
+            if (response.data.status === 'ok') {
+                const mapped = response.data.articles
+                    .filter(item => item.title && item.title !== '[Removed]')
+                    .map(item => ({
+                        title: item.title,
+                        source: item.source.name || 'NewsAPI',
+                        date: item.publishedAt || new Date().toISOString(),
+                        content: item.description || '',
+                        full_text: item.content || item.description || '',
+                        url: item.url,
+                        image_url: item.urlToImage || null,
+                        category_hint: cat.charAt(0).toUpperCase() + cat.slice(1),
+                        raw_json: JSON.stringify(item)
+                    }));
+                allArticles = allArticles.concat(mapped);
+            }
+        }
+
+        console.log(`Fetched ${allArticles.length} total articles across categories.`);
+        return allArticles;
+    } catch (error) {
+        console.error('Error fetching NewsAPI:', error.message);
+        return [];
+    }
 }
 
 module.exports = { fetchNews };

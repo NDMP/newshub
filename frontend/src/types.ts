@@ -7,6 +7,7 @@ export interface Article {
     content: string;
     summary: string;
     sentiment_label: string;
+    sentiment_score: number;
     bias_label: string;
     bias_score: number;
     bias_breakdown: string;

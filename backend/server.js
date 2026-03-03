@@ -1,7 +1,13 @@
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config(); // Load from process.env or local .env
-const db = require('./db');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const { createClient } = require('@supabase/supabase-js');
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL;
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
 const { fetchNews } = require('./scraper');
 const { processArticle } = require('./processor');
 
@@ -23,12 +29,10 @@ app.post('/api/ask', async (req, res) => {
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
     if (!GROQ_API_KEY) {
-        return res.status(500).json({ error: 'AI Key missing on server' });
+        return res.json({ answer: 'AI Key missing on server. Please check your .env file.' });
     }
 
-    // Aggressive Sanitization: ASCII only
     const sanitizedKey = GROQ_API_KEY.replace(/[^\x21-\x7E]/g, '');
-
     const Groq = require('groq-sdk');
     const groq = new Groq({ apiKey: sanitizedKey });
 
@@ -42,12 +46,16 @@ app.post('/api/ask', async (req, res) => {
     try {
         const chatCompletion = await groq.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
-            model: 'llama3-70b-8192', // Using 70b here as it's a single request, usually more stable than 3.3-70b
+            model: 'llama-3.1-8b-instant',
         });
         res.json({ answer: chatCompletion.choices[0].message.content });
     } catch (error) {
         console.error('[Chatbot Error]', error.message);
-        res.status(500).json({ error: error.message });
+        if (error.status === 403 || (error.message && error.message.includes('403'))) {
+            res.json({ answer: "My connection to the Groq AI network is currently blocked by datacenter security policies (403 Access Denied). Groq restricts free-tier access from certain cloud regions and IPs. I'm currently stuck offline!" });
+        } else {
+            res.json({ answer: `I encountered an AI API Error: ${error.message}` });
+        }
     }
 });
 
@@ -57,17 +65,20 @@ app.post('/api/ingest', async (req, res) => {
 
     try {
         const rawArticles = await fetchNews();
-        console.log(`Found ${rawArticles.length} articles from Mediastack.`);
+        console.log(`Found ${rawArticles.length} articles from NewsAPI.`);
 
-        // Respond immediately with success message
         res.json({ message: `Sync started for ${rawArticles.length} articles. Feed will update in background.` });
 
-        // Run processing in background
         (async () => {
             let count = 0;
-            for (const article of rawArticles.slice(0, 30)) {
+            for (const article of rawArticles) {
                 try {
-                    const existing = db.prepare('SELECT id FROM articles WHERE url = ?').get(article.url);
+                    const { data: existing } = await supabase
+                        .from('articles')
+                        .select('id')
+                        .eq('url', article.url)
+                        .single();
+
                     if (existing) {
                         console.log(`[Sync] Skipping existing: ${article.title.substring(0, 30)}`);
                         continue;
@@ -80,19 +91,34 @@ app.post('/api/ingest', async (req, res) => {
                         continue;
                     }
 
-                    db.prepare(`
-                        INSERT INTO articles (
-                            title, source, date, content, full_text, url, image_url, category_hint, raw_json, 
-                            summary, sentiment_label, sentiment_score, 
-                            bias_label, bias_score, bias_breakdown, reliability_score, category
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    `).run(
-                        article.title, article.source, article.date, article.content, article.full_text, article.url, article.image_url, article.category_hint, article.raw_json,
-                        results.summary, results.sentiment_label, results.sentiment_score,
-                        results.bias_label, results.bias_score, JSON.stringify(results.bias_breakdown), results.reliability_score || 0.5, results.category
-                    );
-                    count++;
-                    if (count % 5 === 0) console.log(`[Sync] Progress: ${count} articles finished.`);
+                    const { error: insertError } = await supabase
+                        .from('articles')
+                        .insert({
+                            title: article.title,
+                            source: article.source,
+                            date: article.date,
+                            content: article.content,
+                            full_text: article.full_text,
+                            url: article.url,
+                            image_url: article.image_url,
+                            category_hint: article.category_hint,
+                            raw_json: JSON.parse(article.raw_json),
+                            summary: results.summary,
+                            sentiment_label: results.sentiment_label,
+                            sentiment_score: results.sentiment_score,
+                            bias_label: results.bias_label,
+                            bias_score: results.bias_score,
+                            bias_breakdown: results.bias_breakdown,
+                            reliability_score: results.reliability_score || 0.5,
+                            category: results.category
+                        });
+
+                    if (insertError) {
+                        console.error('[Sync] Insert error:', insertError.message);
+                    } else {
+                        count++;
+                        if (count % 5 === 0) console.log(`[Sync] Progress: ${count} articles finished.`);
+                    }
                 } catch (innerError) {
                     console.error(`[Sync Loop Error]`, innerError.message);
                 }
@@ -106,69 +132,43 @@ app.post('/api/ingest', async (req, res) => {
     }
 });
 
-// Auth Endpoints (Simple)
-app.post('/api/signup', (req, res) => {
-    const { email, password } = req.body;
-    console.log(`[Auth] Signup attempt for: ${email}`);
-    try {
-        const stmt = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)');
-        const result = stmt.run(email, password);
-        console.log(`[Auth] Signup successful: ${email}`);
-        res.json({ id: result.lastInsertRowid, email });
-    } catch (err) {
-        console.error(`[Auth] Signup failed for ${email}:`, err.message);
-        res.status(400).json({ error: 'User already exists' });
-    }
-});
+// Auth Endpoints handled by Supabase on frontend
 
-app.post('/api/login', (req, res) => {
-    const { email, password } = req.body;
-    console.log(`[Auth] Login attempt for: ${email}`);
-    const user = db.prepare('SELECT * FROM users WHERE email = ? AND password_hash = ?').get(email, password);
-    if (user) {
-        console.log(`[Auth] Login successful: ${email}`);
-        res.json({ id: user.id, email: user.email });
-    } else {
-        console.warn(`[Auth] Login failed (401) for: ${email}`);
-        res.status(401).json({ error: 'Invalid credentials' });
-    }
-});
+app.get('/api/articles/:id', async (req, res) => {
+    const { data: article, error } = await supabase
+        .from('articles')
+        .select('*')
+        .eq('id', req.params.id)
+        .single();
 
-app.get('/api/articles/:id', (req, res) => {
-    const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(req.params.id);
-    if (!article) return res.status(404).json({ error: 'Not found' });
+    if (error || !article) return res.status(404).json({ error: 'Not found' });
     res.json(article);
 });
 
 // Get articles with Pagination
-app.get('/api/articles', (req, res) => {
+app.get('/api/articles', async (req, res) => {
     const limit = parseInt(req.query.limit) || 12;
     const offset = parseInt(req.query.offset) || 0;
     const category = req.query.category || 'All';
 
-    let query = 'SELECT * FROM articles';
-    let params = [];
+    let query = supabase
+        .from('articles')
+        .select('*', { count: 'exact' })
+        .order('timestamp', { ascending: false })
+        .range(offset, offset + limit - 1);
 
     if (category !== 'All') {
-        query += ' WHERE category = ?';
-        params.push(category);
+        query = query.eq('category', category);
     }
 
-    query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    const { data: articles, count, error } = await query;
 
-    const articles = db.prepare(query).all(...params);
-
-    // Also get total count for pagination
-    let countQuery = 'SELECT COUNT(*) as total FROM articles';
-    let countParams = [];
-    if (category !== 'All') {
-        countQuery += ' WHERE category = ?';
-        countParams.push(category);
+    if (error) {
+        console.error('Fetch articles error:', error.message);
+        return res.status(500).json({ error: error.message });
     }
-    const total = db.prepare(countQuery).get(...countParams).total;
 
-    res.json({ articles, total });
+    res.json({ articles, total: count });
 });
 
 // Background Auto-Sync every 15 minutes
@@ -177,24 +177,39 @@ setInterval(async () => {
     try {
         const rawArticles = await fetchNews();
         let count = 0;
-        for (const article of rawArticles.slice(0, 50)) {
-            const existing = db.prepare('SELECT id FROM articles WHERE url = ?').get(article.url);
+        for (const article of rawArticles) {
+            const { data: existing } = await supabase
+                .from('articles')
+                .select('id')
+                .eq('url', article.url)
+                .single();
+
             if (existing) continue;
 
             const results = await processArticle(article);
             if (!results) continue;
 
-            db.prepare(`
-        INSERT INTO articles (
-          title, source, date, content, full_text, url, image_url, category_hint, raw_json, 
-          summary, sentiment_label, sentiment_score, 
-          bias_label, bias_score, bias_breakdown, reliability_score, category
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-                article.title, article.source, article.date, article.content, article.full_text, article.url, article.image_url, article.category_hint, article.raw_json,
-                results.summary, results.sentiment_label, results.sentiment_score,
-                results.bias_label, results.bias_score, JSON.stringify(results.bias_breakdown), results.reliability_score || 0.5, results.category
-            );
+            await supabase
+                .from('articles')
+                .insert({
+                    title: article.title,
+                    source: article.source,
+                    date: article.date,
+                    content: article.content,
+                    full_text: article.full_text,
+                    url: article.url,
+                    image_url: article.image_url,
+                    category_hint: article.category_hint,
+                    raw_json: JSON.parse(article.raw_json),
+                    summary: results.summary,
+                    sentiment_label: results.sentiment_label,
+                    sentiment_score: results.sentiment_score,
+                    bias_label: results.bias_label,
+                    bias_score: results.bias_score,
+                    bias_breakdown: results.bias_breakdown,
+                    reliability_score: results.reliability_score || 0.5,
+                    category: results.category
+                });
             count++;
         }
         console.log(`Auto-sync completed. Ingested ${count} articles.`);

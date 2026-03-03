@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { supabase } from '../supabaseClient';
 
 interface AuthViewProps {
     onAuthSuccess: (user: { email: string }) => void;
@@ -15,29 +16,24 @@ const AuthView: React.FC<AuthViewProps> = ({ onAuthSuccess, onBack }) => {
         e.preventDefault();
         setError('');
 
-        const endpoint = isLogin ? '/api/login' : '/api/signup';
         try {
-            let apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-            // Ensure no trailing slash for consistency
-            if (apiUrl.endsWith('/')) apiUrl = apiUrl.slice(0, -1);
-            // Ensure protocol is present to avoid relative path prefixing
-            if (!apiUrl.startsWith('http')) apiUrl = `https://${apiUrl}`;
-
-            console.log(`[NewsHub] Attempting connection to: ${apiUrl}${endpoint}`);
-
-            const res = await fetch(`${apiUrl}${endpoint}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password }),
-            });
-            const data = await res.json();
-            if (res.ok) {
-                onAuthSuccess(data);
+            if (isLogin) {
+                const { data, error: authError } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                });
+                if (authError) throw authError;
+                if (data.user) onAuthSuccess({ email: data.user.email! });
             } else {
-                setError(data.error || 'Authentication failed');
+                const { data, error: authError } = await supabase.auth.signUp({
+                    email,
+                    password,
+                });
+                if (authError) throw authError;
+                if (data.user) onAuthSuccess({ email: data.user.email! });
             }
-        } catch (err) {
-            setError('Connection error. Is the server running?');
+        } catch (err: any) {
+            setError(err.message || 'Authentication failed');
         }
     };
 

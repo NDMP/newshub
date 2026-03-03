@@ -20,17 +20,19 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, onClick }) => {
                 }} />
                 <div className="item-category">{article.category}</div>
             </div>
-            <div className="item-meta">
-                <span>{article.source}</span>
-                <span>•</span>
-                <span>{new Date(article.date).toLocaleDateString()}</span>
-            </div>
-            <h2 className="item-title">{article.title}</h2>
-            <div className="item-footer">
-                <div className="reliability-meter">
-                    <div className="meter-fill" style={{ width: `${(article.reliability_score || 0.5) * 100}%` }}></div>
+            <div className="item-content">
+                <div className="item-meta">
+                    <span>{article.source}</span>
+                    <span>•</span>
+                    <span>{new Date(article.date).toLocaleDateString()}</span>
                 </div>
-                <div className="bias-tag">{article.bias_label} Bias</div>
+                <h2 className="item-title">{article.title}</h2>
+                <div className="item-footer">
+                    <div className="reliability-meter">
+                        <div className="meter-fill" style={{ width: `${(article.bias_score || 0.1) * 100}%` }}></div>
+                    </div>
+                    <div className="bias-tag">{article.bias_label} Bias</div>
+                </div>
             </div>
         </div>
     );
