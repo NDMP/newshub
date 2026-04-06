@@ -21,10 +21,9 @@ const groq = new Groq({
 });
 
 const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
 // ══════════════════════════════════════════════════════════════════════════
 //  RATE-LIMIT-SAFE GROQ HELPER
 //  Reads the wait time FROM the Groq error message and waits exactly that
