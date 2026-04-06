@@ -12,9 +12,10 @@ const { createClient } = require('@supabase/supabase-js');
 const Groq    = require('groq-sdk');
 
 // ── Verify env loaded ──────────────────────────────────────────────────────
-console.log('[ENV CHECK] SUPABASE URL:', process.env.VITE_SUPABASE_URL ? '✓ loaded' : '✗ MISSING');
-console.log('[ENV CHECK] GROQ KEY    :', process.env.GROQ_API_KEY     ? '✓ loaded' : '✗ MISSING');
-console.log('[ENV CHECK] NEWSAPI KEY :', process.env.NEWSAPI_KEY       ? '✓ loaded' : '✗ MISSING');
+console.log('[ENV CHECK] SUPABASE URL:', process.env.SUPABASE_URL ? '✓ loaded' : '✗ MISSING');
+console.log('[ENV CHECK] SUPABASE KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? '✓ loaded' : '✗ MISSING');
+console.log('[ENV CHECK] GROQ KEY    :', process.env.GROQ_API_KEY ? '✓ loaded' : '✗ MISSING');
+console.log('[ENV CHECK] NEWSAPI KEY :', process.env.NEWSAPI_KEY ? '✓ loaded' : '✗ MISSING');
 
 const userRoutes         = require('./routes/user');
 const { fetchNews }      = require('./scraper');
@@ -31,8 +32,8 @@ try {
 
 // ── Supabase ───────────────────────────────────────────────────────────────
 const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.VITE_SUPABASE_ANON_KEY
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 // ── Groq ───────────────────────────────────────────────────────────────────
