@@ -8,7 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 // ==========================================
 let supabase;
 try {
-    const supabaseUrl = process.env.SUPABASE_URL_URL;
+    const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_URL_ANON_KEY;
     
     if (!supabaseUrl || !supabaseKey) {
