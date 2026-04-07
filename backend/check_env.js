@@ -8,8 +8,8 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 console.log('\n=== NewsHub Environment Check ===\n');
 
 const vars = {
-  'VITE_SUPABASE_URL':    process.env.VITE_SUPABASE_URL,
-  'VITE_SUPABASE_ANON_KEY': process.env.VITE_SUPABASE_ANON_KEY ? process.env.VITE_SUPABASE_ANON_KEY.substring(0,20) + '...' : undefined,
+  'SUPABASE_URL_URL':    process.env.SUPABASE_URL_URL,
+  'SUPABASE_URL_ANON_KEY': process.env.SUPABASE_URL_ANON_KEY ? process.env.SUPABASE_URL_ANON_KEY.substring(0,20) + '...' : undefined,
   'GROQ_API_KEY':         process.env.GROQ_API_KEY ? process.env.GROQ_API_KEY.substring(0,15) + '...' : undefined,
   'NEWSAPI_KEY':          process.env.NEWSAPI_KEY,
   'PORT':                 process.env.PORT || '3001 (default)',
